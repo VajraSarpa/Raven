@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Raven Charts</title>
+<style>
+  :root { --bg: #161618; --fg: #e6e6e8; --muted: #8b8b92; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 14px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  #chart { position: absolute; inset: 16px 20px 16px 16px; }
+  #chart .vega-embed { width: 100%; height: 100%; }
+  #chart .vega-embed summary { display: none; }
+  #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 8px; color: var(--muted); text-align: center; padding: 24px; }
+  #empty b { color: var(--fg); font-size: 18px; font-weight: 600; }
+  #error { position: absolute; left: 16px; right: 16px; bottom: 16px; padding: 10px 12px;
+    background: #3a1d1d; color: #ffb4b4; border-radius: 8px; font: 12px ui-monospace, Menlo, monospace;
+    white-space: pre-wrap; display: none; }
+  #vg-tooltip-element.vg-tooltip { background: #222226; color: var(--fg); border: 1px solid #3a3a40; }
+  #vg-tooltip-element.vg-tooltip td.key { color: var(--muted); }
+</style>
+<script src="vendor/vega.min.js"></script>
+<script src="vendor/vega-lite.min.js"></script>
+<script src="vendor/vega-embed.min.js"></script>
+</head>
+<body>
+<div id="chart"></div>
+<div id="empty"><b>No data yet</b><span>Open a CSV, TSV or JSON file, drop one on the window, or load the demo.</span></div>
+<div id="error"></div>
+<script src="chart.js"></script>
+</body>
+</html>

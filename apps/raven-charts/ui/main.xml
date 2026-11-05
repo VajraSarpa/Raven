@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Raven Charts - the window.
+
+  Everything around the chart is Raven: the files, the chart style, the
+  fields, the options, the spec editor. The chart itself is a Vega-Lite view
+  in a <WebView> (raven_web), driven from src/main.c.
+-->
+<Window Title="Raven Charts" Width="1400" Height="880" MinWidth="980" MinHeight="600">
+	<VBox>
+		<HBox Spacing="8" Slot.Padding="12,8,12,8">
+			<Button Text="Open files..." Style="Primary" OnClicked="file.open"/>
+			<Button Text="Demo data" Style="Flat" OnClicked="file.demo"/>
+			<Label Name="status" Text="Open a CSV, TSV or JSON file, or drop one on the window." Opacity="0.65" Slot.Fill="1" Slot.VAlign="Center" Slot.Padding="10,0,10,0"/>
+			<Button Text="Copy spec" Style="Flat" OnClicked="export.copy"/>
+			<Button Text="Export PNG" Style="Flat" OnClicked="export.png"/>
+			<Button Text="Export SVG" Style="Flat" OnClicked="export.svg"/>
+			<Checkbox Name="light" Text="Light" Style="Switch" OnChanged="view.theme" Slot.VAlign="Center"/>
+		</HBox>
+		<Separator/>
+		<HBox Slot.Fill="1">
+			<ScrollBox Width="300">
+				<VBox Spacing="6" Slot.Padding="14,12,14,14">
+					<Label Text="FILES" TextSize="11" Opacity="0.55"/>
+					<ListView Name="files" Height="128"/>
+					<HBox Spacing="6">
+						<Button Text="Reload" Style="Flat" OnClicked="file.reload"/>
+						<Button Text="Remove" Style="Flat" OnClicked="file.remove"/>
+					</HBox>
+					<Separator Slot.Padding="0,6,0,6"/>
+
+					<Label Text="CHART STYLE" TextSize="11" Opacity="0.55"/>
+					<ComboBox Name="style" OnChanged="chart.style"/>
+					<Label Name="style_help" Text="" Wrap="true" Opacity="0.6" TextSize="12"/>
+					<Separator Slot.Padding="0,6,0,6"/>
+
+					<Label Text="FIELDS" TextSize="11" Opacity="0.55"/>
+					<Label Text="X" Opacity="0.75"/>
+					<ComboBox Name="x" OnChanged="chart.update"/>
+					<Label Text="Y" Opacity="0.75"/>
+					<ComboBox Name="y" OnChanged="chart.update"/>
+					<Label Text="Color" Opacity="0.75"/>
+					<ComboBox Name="color" OnChanged="chart.update"/>
+					<Label Text="Label (model names)" Opacity="0.75"/>
+					<ComboBox Name="label" OnChanged="chart.update"/>
+					<Label Text="Size (bubble)" Opacity="0.75"/>
+					<ComboBox Name="size" OnChanged="chart.update"/>
+					<Label Text="Error low / high" Opacity="0.75"/>
+					<HBox Spacing="6">
+						<ComboBox Name="low" OnChanged="chart.update" Slot.Fill="1"/>
+						<ComboBox Name="high" OnChanged="chart.update" Slot.Fill="1"/>
+					</HBox>
+					<Separator Slot.Padding="0,6,0,6"/>
+
+					<Label Text="OPTIONS" TextSize="11" Opacity="0.55"/>
+					<Label Text="Aggregate" Opacity="0.75"/>
+					<ComboBox Name="aggregate" Items="None|Count|Sum|Mean|Median|Min|Max" Selected="0" OnChanged="chart.update"/>
+					<HBox Spacing="8">
+						<Label Text="Top N (labels, leaderboard)" Opacity="0.75" Slot.Fill="1" Slot.VAlign="Center"/>
+						<SpinBox Name="topn" Min="1" Max="200" Step="1" Decimals="0" Value="10" Width="90" OnChanged="chart.update"/>
+					</HBox>
+					<Checkbox Name="logy" Text="Logarithmic Y" OnChanged="chart.update"/>
+					<Checkbox Name="logx" Text="Logarithmic X" OnChanged="chart.update"/>
+					<Checkbox Name="pergroup" Text="Frontier / trend per color group" OnChanged="chart.update"/>
+					<Label Text="Title" Opacity="0.75"/>
+					<TextInput Name="title" Placeholder="Automatic" OnCommitted="chart.update"/>
+					<Label Text="Filter (Vega expression)" Opacity="0.75"/>
+					<TextInput Name="filter" Placeholder="datum['ECI Score'] &gt; 120" OnCommitted="chart.update"/>
+					<Label Text="Press Enter in a text field to apply it." Opacity="0.45" TextSize="11" Wrap="true"/>
+				</VBox>
+			</ScrollBox>
+			<Separator Orientation="Vertical"/>
+			<TabView Name="tabs" Slot.Fill="1">
+				<WebView Name="chart" Source="../web/chart.html" Slot.Title="Chart"/>
+				<VBox Slot.Title="Vega-Lite spec">
+					<HBox Spacing="8" Slot.Padding="10,8,10,8">
+						<Button Text="Apply spec" Style="Primary" OnClicked="spec.apply"/>
+						<Button Text="Back to the controls" Style="Flat" OnClicked="spec.reset"/>
+						<Label Markdown="true" Wrap="true" Opacity="0.6" Slot.Fill="1" Slot.VAlign="Center" Slot.Padding="8,0,0,0">Edit any Vega-Lite spec. `{"name": "table"}` is the selected file; every loaded file is also a named dataset (its file name, e.g. `demo_models_FICTIONAL`).</Label>
+					</HBox>
+					<TextEditor Name="spec" Language="JSON" LineNumbers="true" Slot.Fill="1"/>
+				</VBox>
+			</TabView>
+		</HBox>
+	</VBox>
+</Window>
