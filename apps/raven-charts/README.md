@@ -34,7 +34,7 @@ cmake --build build-charts --parallel
 ```
 
 On Windows the program is `build-charts\Release\raven_charts.exe`. If you move the executable, set `RAVEN_CHARTS_DIR` to the folder that holds `ui/`, `web/` and `data/`.
-If no browser is found, set `RAVEN_WEB_BROWSER` to its path.
+The app uses Google Chrome when it is installed, otherwise the first Chromium-family browser it finds. To choose another, set `RAVEN_WEB_BROWSER` to its path.
 
 ## Using Epoch AI's ECI data
 

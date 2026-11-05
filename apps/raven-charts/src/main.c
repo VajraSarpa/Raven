@@ -659,6 +659,38 @@ static int on_drop(Rid target, const RDropEvent* event, void* user_data) {
 	return R_TRUE;
 }
 
+/*
+ * Google Chrome when it is installed. raven_web would otherwise take the
+ * first browser it finds (Chromium before Chrome on Linux). RAVEN_WEB_BROWSER
+ * still wins.
+ */
+static void use_chrome(void) {
+	static const char* const candidates[] = {
+#if defined(_WIN32)
+		"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+		"C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+#elif defined(__APPLE__)
+		"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+#else
+		"/usr/bin/google-chrome",
+		"/usr/bin/google-chrome-stable",
+		"/opt/google/chrome/chrome",
+		"/usr/local/bin/google-chrome",
+#endif
+	};
+	const char* forced = getenv("RAVEN_WEB_BROWSER");
+	int i;
+	if (forced && forced[0]) return;
+	for (i = 0; i < (int)(sizeof(candidates) / sizeof(candidates[0])); i++) {
+		FILE* file = fopen(candidates[i], "rb");
+		if (file) {
+			fclose(file);
+			Rweb_set_browser_path(candidates[i]);
+			return;
+		}
+	}
+}
+
 static void on_error(RError code, RSeverity severity, const char* detail) {
 	fprintf(stderr, "[Raven] %s (%s): %s\n", Rerror_to_string(code), Rseverity_to_string(severity), detail);
 }
@@ -722,8 +754,11 @@ int main(int argc, char** argv) {
 		return 1;
 	}
 	Rtheme_apply(R_THEME_DARK);
+	use_chrome();
 	Rweb_register_xml();
-	if (!Rweb_is_available()) {
+	if (Rweb_is_available()) {
+		printf("Raven Charts: drawing with %s\n", Rweb_get_browser_path());
+	} else {
 		fprintf(stderr, "Raven Charts: no browser of the Chromium family was found (Edge, Chrome, Chromium).\n"
 			"Install one, or set RAVEN_WEB_BROWSER to the path of its program.\n");
 	}
