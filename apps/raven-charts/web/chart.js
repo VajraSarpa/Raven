@@ -112,6 +112,19 @@
 		}
 	}
 
+	/* A field, with its distinct values when there are few (most common first): the "Show only" list. */
+	function describe(name, type, rows) {
+		const counts = new Map();
+		for (const r of rows) {
+			const v = r[name];
+			if (v === null || v === undefined || v === "") continue;
+			counts.set(v, (counts.get(v) || 0) + 1);
+		}
+		const sorted = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+		return { name, type, distinct: counts.size, top: sorted.length ? String(sorted[0][0]) : "",
+			values: type === "nominal" && counts.size <= 300 ? sorted.map((e) => String(e[0])) : [] };
+	}
+
 	function guess(fields) {
 		const of = (type) => fields.filter((f) => f.type === type);
 		const pick = (re, types, not) => {
@@ -143,7 +156,10 @@
 			pick(/^(?!.*(_id|id$|version)).*(model|system|display)/i, ["nominal"], [color]) ||
 			pick(/model|system|^name$|display/i, ["nominal"], [color]) ||
 			((nominal.find((f) => f.name !== color) || {}).name) || "";
-		return { x, y, color, label, low: low && high ? low : "", high: low && high ? high : "", size: "" };
+		const colorField = fields.find((f) => f.name === color);
+		const isOrganization = /organi[sz]ation|^org|^lab$|developer|company|country|publisher|provider|vendor/i.test(color);
+		const only = color && !isOrganization && colorField && colorField.distinct > 12 ? colorField.top : "";
+		return { x, y, color, label, low: low && high ? low : "", high: low && high ? high : "", size: "", only };
 	}
 
 	RC.loadDataset = function (idx, name, text, ext) {
@@ -168,7 +184,7 @@
 			if (!rows.length) throw new Error("The file has no rows.");
 			const names = [];
 			for (const r of rows.slice(0, 200)) for (const k in r) if (!names.includes(k)) names.push(k);
-			const fields = names.filter((n) => n.trim() !== "").map((n) => ({ name: n, type: inferType(n, rows), distinct: new Set(rows.map((r) => r[n])).size }));
+			const fields = names.filter((n) => n.trim() !== "").map((n) => describe(n, inferType(n, rows), rows));
 			convert(rows, fields);
 			const alias = String(name).replace(/\.[^.]*$/, "").replace(/[^A-Za-z0-9_]+/g, "_").replace(/^(\d)/, "_$1") || "data";
 			RC.datasets[idx] = { name, alias, rows, fields };
@@ -176,8 +192,8 @@
 			const clean = (s) => String(s).replace(/[\t\r\n]+/g, " ");
 			post("dataset", [
 				[idx, rows.length, clean(name)].join("\t"),
-				[g.x, g.y, g.color, g.label, g.low, g.high, g.size].map(clean).join("\t"),
-				...fields.map((f) => clean(f.name) + "\t" + f.type),
+				[g.x, g.y, g.color, g.label, g.low, g.high, g.size, g.only].map(clean).join("\t"),
+				...fields.map((f) => [clean(f.name), f.type].concat(f.values.map(clean)).join("\t")),
 			].join("\n"));
 		} catch (e) {
 			post("error", name + ": " + (e && e.message ? e.message : e));
@@ -256,7 +272,7 @@
 		const xScale = cfg.logX && T(x) === "quantitative" ? { type: "log" } : T(x) === "quantitative" ? { zero: false } : undefined;
 		const xEnc = () => enc(x, xScale ? { scale: xScale } : {});
 		const yEnc = () => enc(y, { scale: yScale });
-		const colorEnc = () => color ? { field: color, type: T(color) === "quantitative" ? "quantitative" : "nominal", title: color } : undefined;
+		const colorEnc = () => color ? { field: color, type: T(color) === "quantitative" ? "quantitative" : "nominal", title: color, legend: cfg.only ? null : undefined } : undefined;
 		const tooltip = () => {
 			const list = [];
 			for (const f of [label, x, y, low, high, color, size]) {
@@ -270,6 +286,7 @@
 			return { filter: q ? "isValid(" + ref(f) + ") && isFinite(" + ref(f) + ")" + (pos ? " && " + ref(f) + " > 0" : "") : "isValid(" + ref(f) + ")" };
 		});
 		const transforms = [];
+		if (color && cfg.only) transforms.push({ filter: ref(color) + " == " + json(cfg.only) });
 		if (cfg.filter && cfg.filter.trim()) transforms.push({ filter: cfg.filter.trim() });
 
 		const point = (extra) => ({
@@ -304,8 +321,8 @@
 			case "frontier": {
 				needs([x, "an X field"], [y, "a Y field"]);
 				transforms.push(...valid(x, y),
-					{ window: [{ op: "max", field: y, as: "__best" }], sort: [{ field: x }, { field: y }], frame: [null, 0], groupby },
-					{ window: [{ op: "lag", field: "__best", as: "__previous" }], sort: [{ field: x }, { field: y }], groupby },
+					{ window: [{ op: "max", field: y, as: "__best" }], sort: [{ field: x }, { field: y, order: "descending" }], frame: [null, 0], groupby },
+					{ window: [{ op: "lag", field: "__best", as: "__previous" }], sort: [{ field: x }, { field: y, order: "descending" }], groupby },
 					{ calculate: "!isValid(datum.__previous) || " + ref(y) + " > datum.__previous", as: "__record" });
 				const record = "datum.__record";
 				body = { layer: [
@@ -431,9 +448,10 @@
 			: style === "histogram" ? "Distribution of " + (x || y)
 			: style === "leaderboard" ? "Top " + topN + " by " + y
 			: (y || "Count") + (x ? " by " + x : "");
+		const shownTitle = color && cfg.only && !(cfg.title && cfg.title.trim()) ? cfg.only + ": " + titleText : titleText;
 		return Object.assign({
 			$schema: "https://vega.github.io/schema/vega-lite/v5.json",
-			title: { text: titleText, subtitle: ds2.name + "  ·  " + ds2.rows.length + " rows" },
+			title: { text: shownTitle, subtitle: ds2.name + "  ·  " + ds2.rows.length + " rows" },
 			width: "container",
 			height: "container",
 			autosize: { type: "fit", contains: "padding" },

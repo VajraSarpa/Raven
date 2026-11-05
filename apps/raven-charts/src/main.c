@@ -104,6 +104,9 @@ typedef struct {
 	int field_count;
 	char* fields[MAX_FIELDS];
 	char types[MAX_FIELDS];   /* 'q' quantitative, 't' temporal, 'n' nominal */
+	char* values[MAX_FIELDS]; /* text fields with few values: "v1\tv2...", most common first; else NULL */
+	char only_guess[256];     /* the value shown at first ("Show only"), for files with one row per model and benchmark */
+	int sel_only;
 	/* what the controls showed for it, given back when it is selected again */
 	int sel_x, sel_y, sel_color, sel_label, sel_size, sel_low, sel_high;
 } Dataset;
@@ -134,7 +137,7 @@ static const char* AGGREGATES[] = { "none", "count", "sum", "mean", "median", "m
 static struct {
 	char dir[1024];
 	Rid window, view, files, style, style_help, status, tabs, spec, light;
-	Rid x, y, color, label, size, low, high, aggregate, topn, logy, logx, pergroup, title, filter;
+	Rid x, y, color, label, size, low, high, only, aggregate, topn, logy, logx, pergroup, title, filter;
 	Dataset datasets[MAX_DATASETS];
 	int dataset_count;
 	int active;
@@ -142,6 +145,7 @@ static struct {
 	Str* pending;            /* scripts given before the page was ready */
 	int pending_count;
 	int updating;            /* the controls are being filled: no redraw */
+	int only_color;          /* the Color item the "Show only" list was filled for */
 	char export_path[1024];
 	int drawn;               /* automated runs: a chart was drawn */
 } app;
@@ -182,6 +186,42 @@ static const char* chosen(Rid combo) {
 	return d && index >= 0 && index < d->field_count ? d->fields[index] : "";
 }
 
+/* The value chosen in "Show only" (item 0 is "(all)"). */
+static const char* chosen_only(void) {
+	return Rcombo_box_get_selected(app.only) > 0 ? Rcombo_box_get_item_text(app.only, Rcombo_box_get_selected(app.only)) : "";
+}
+
+/* "Show only" lists the values of the Color field. */
+static void fill_only(const char* select) {
+	Dataset* d = active_dataset();
+	int color = Rcombo_box_get_selected(app.color) - 1;
+	int selected = 0, count = 1;
+	app.updating++;
+	Rcombo_box_clear_items(app.only);
+	Rcombo_box_add_item(app.only, "(all)");
+	if (d && color >= 0 && color < d->field_count && d->values[color]) {
+		char* copy = (char*)malloc(strlen(d->values[color]) + 1);
+		char* p = copy;
+		if (copy) {
+			strcpy(copy, d->values[color]);
+			while (p) {
+				char* tab = strchr(p, '\t');
+				if (tab) *tab = '\0';
+				if (p[0]) {
+					Rcombo_box_add_item(app.only, p);
+					if (select && strcmp(select, p) == 0) selected = count;
+					count++;
+				}
+				p = tab ? tab + 1 : NULL;
+			}
+			free(copy);
+		}
+	}
+	Rcombo_box_set_selected(app.only, selected);
+	app.only_color = Rcombo_box_get_selected(app.color);
+	app.updating--;
+}
+
 static void render(void) {
 	Dataset* d = active_dataset();
 	int style = Rcombo_box_get_selected(app.style);
@@ -190,6 +230,7 @@ static void render(void) {
 	Str s = { 0 };
 	if (app.updating || !d || !d->parsed) return;
 	if (style < 0 || style >= STYLE_COUNT) style = 0;
+	if (Rcombo_box_get_selected(app.color) != app.only_color) fill_only(NULL);
 	if (aggregate < 0 || aggregate >= (int)(sizeof(AGGREGATES) / sizeof(AGGREGATES[0]))) aggregate = 0;
 
 	str_add(&s, "RC.render({dataset: ");
@@ -203,6 +244,7 @@ static void render(void) {
 	str_add(&s, ", size: "); str_quoted(&s, chosen(app.size));
 	str_add(&s, ", low: "); str_quoted(&s, chosen(app.low));
 	str_add(&s, ", high: "); str_quoted(&s, chosen(app.high));
+	str_add(&s, ", only: "); str_quoted(&s, chosen_only());
 	str_add(&s, ", aggregate: "); str_quoted(&s, AGGREGATES[aggregate]);
 	snprintf(number, sizeof(number), ", topN: %d", (int)Rspin_box_get_value(app.topn));
 	str_add(&s, number);
@@ -269,6 +311,19 @@ static void open_path(const char* path) {
 			return;
 		}
 	}
+	{
+		/* folders, programs and other binary files are not data */
+		size_t size = 0, k;
+		char* text = Rfile_read(path, &size);
+		int binary = !text;
+		for (k = 0; text && k < size && k < 8192; k++) if (text[k] == '\0') { binary = 1; break; }
+		if (text) Rmemory_free(text);
+		if (binary) {
+			snprintf(message, sizeof(message), "Skipped %s: not a CSV, TSV or JSON file.", base_name(path));
+			set_status(message);
+			return;
+		}
+	}
 	if (app.dataset_count >= MAX_DATASETS) {
 		set_status("Too many files open: remove one first.");
 		return;
@@ -286,7 +341,11 @@ static void open_path(const char* path) {
 
 static void free_fields(Dataset* d) {
 	int i;
-	for (i = 0; i < d->field_count; i++) free(d->fields[i]);
+	for (i = 0; i < d->field_count; i++) {
+		free(d->fields[i]);
+		free(d->values[i]);
+		d->values[i] = NULL;
+	}
 	d->field_count = 0;
 }
 
@@ -300,6 +359,7 @@ static void remember_selection(void) {
 	d->sel_size = Rcombo_box_get_selected(app.size);
 	d->sel_low = Rcombo_box_get_selected(app.low);
 	d->sel_high = Rcombo_box_get_selected(app.high);
+	d->sel_only = Rcombo_box_get_selected(app.only);
 }
 
 static void fill_combos(void) {
@@ -328,8 +388,24 @@ static void fill_combos(void) {
 		Rcombo_box_set_selected(app.size, d->sel_size);
 		Rcombo_box_set_selected(app.low, d->sel_low);
 		Rcombo_box_set_selected(app.high, d->sel_high);
+		{
+			/* the value remembered for this file, else the first guess */
+			char remembered[256] = "";
+			if (d->sel_only > 0 && d->sel_color == Rcombo_box_get_selected(app.color) && d->values[d->sel_color - 1]) {
+				const char* p = d->values[d->sel_color - 1];
+				int i2;
+				for (i2 = 1; i2 < d->sel_only && p; i2++) { p = strchr(p, '\t'); if (p) p++; }
+				if (p) { size_t n = strcspn(p, "\t"); if (n < sizeof(remembered)) { memcpy(remembered, p, n); remembered[n] = 0; } }
+			}
+			app.updating--;
+			fill_only(remembered[0] ? remembered : (d->sel_only == 0 && d->only_guess[0] ? d->only_guess : NULL));
+			app.updating++;
+		}
 	} else {
 		for (c = 0; c < (int)(sizeof(combos) / sizeof(combos[0])); c++) Rcombo_box_set_selected(*combos[c], 0);
+		app.updating--;
+		fill_only(NULL);
+		app.updating++;
 	}
 	app.updating--;
 }
@@ -368,7 +444,7 @@ static int field_index(Dataset* d, const char* name) {
 /* "dataset" message: idx\trows\tname / guesses / one field\ttype per line. */
 static void on_dataset(char* body) {
 	char* lines[MAX_FIELDS + 2];
-	char* guess[7] = { 0 };
+	char* guess[8] = { 0 };
 	int line_count = 0, index, i;
 	char* p = body;
 	while (p && line_count < MAX_FIELDS + 2) {
@@ -394,11 +470,20 @@ static void on_dataset(char* body) {
 		d->fields[d->field_count] = (char*)malloc(n + 1);
 		memcpy(d->fields[d->field_count], lines[i], n + 1);
 		d->types[d->field_count] = tab[1] == 'q' ? 'q' : tab[1] == 't' ? 't' : 'n';
+		{
+			char* rest = strchr(tab + 1, '\t');
+			d->values[d->field_count] = NULL;
+			if (rest && rest[1]) {
+				size_t m = strlen(rest + 1);
+				d->values[d->field_count] = (char*)malloc(m + 1);
+				if (d->values[d->field_count]) memcpy(d->values[d->field_count], rest + 1, m + 1);
+			}
+		}
 		d->field_count++;
 	}
 	/* the guesses of the page: x, y, color, label, low, high, size */
 	p = lines[1];
-	for (i = 0; i < 7 && p; i++) {
+	for (i = 0; i < 8 && p; i++) {
 		char* tab = strchr(p, '\t');
 		guess[i] = p;
 		if (tab) *tab = '\0';
@@ -412,6 +497,8 @@ static void on_dataset(char* body) {
 		d->sel_low = field_index(d, guess[4]);
 		d->sel_high = field_index(d, guess[5]);
 		d->sel_size = field_index(d, guess[6]);
+		d->sel_only = 0;
+		snprintf(d->only_guess, sizeof(d->only_guess), "%s", guess[7] ? guess[7] : "");
 	}
 	d->parsed = 1;
 	if (app.active != index) remember_selection();
@@ -787,7 +874,7 @@ int main(int argc, char** argv) {
 	FIND(view, "chart"); FIND(files, "files"); FIND(style, "style"); FIND(style_help, "style_help");
 	FIND(status, "status"); FIND(tabs, "tabs"); FIND(spec, "spec"); FIND(light, "light");
 	FIND(x, "x"); FIND(y, "y"); FIND(color, "color"); FIND(label, "label"); FIND(size, "size");
-	FIND(low, "low"); FIND(high, "high"); FIND(aggregate, "aggregate"); FIND(topn, "topn");
+	FIND(low, "low"); FIND(high, "high"); FIND(only, "only"); FIND(aggregate, "aggregate"); FIND(topn, "topn");
 	FIND(logy, "logy"); FIND(logx, "logx"); FIND(pergroup, "pergroup"); FIND(title, "title"); FIND(filter, "filter");
 #undef FIND
 

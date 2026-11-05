@@ -41,6 +41,8 @@
 					<ComboBox Name="y" OnChanged="chart.update"/>
 					<Label Text="Color" Opacity="0.75"/>
 					<ComboBox Name="color" OnChanged="chart.update"/>
+					<Label Text="Show only (a value of Color)" Opacity="0.75"/>
+					<ComboBox Name="only" OnChanged="chart.update"/>
 					<Label Text="Label (model names)" Opacity="0.75"/>
 					<ComboBox Name="label" OnChanged="chart.update"/>
 					<Label Text="Size (bubble)" Opacity="0.75"/>
