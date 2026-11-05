@@ -119,7 +119,10 @@
 			return f ? f.name : "";
 		};
 		const temporal = of("temporal"), quantitative = of("quantitative"), nominal = of("nominal");
-		const x = pick(/release|publication|published|date/i, ["temporal"]) ||
+		/* the date of the record itself, not of something it refers to (benchmark_release_date) */
+		const x = pick(/^(date|release[ _]?date|model[ _]?release[ _]?date|publication[ _]?date|published)$/i, ["temporal"]) ||
+			pick(/^(?!.*(benchmark|dataset|task)).*(release|publication|published|date)/i, ["temporal"]) ||
+			pick(/release|publication|published|date/i, ["temporal"]) ||
 			(temporal[0] && temporal[0].name) || (quantitative[0] && quantitative[0].name) || (fields[0] && fields[0].name) || "";
 		const y = pick(/(^|[^a-z])eci([^a-z]|$)|capabilit/i, ["quantitative"], [x]) ||
 			pick(/score|accuracy|performance|value|mean/i, ["quantitative"], [x]) ||
@@ -132,8 +135,13 @@
 		};
 		const low = bound(/(lower|low|_lo$|ci_?l|p0?5\b|5%|2\.5%)/i);
 		const high = bound(/(upper|high|_hi$|ci_?h|ci_?u|p95\b|95%|97\.5%)/i);
-		const color = pick(/organi[sz]ation|^org|^lab$|developer|company|country|publisher|provider|vendor/i, ["nominal"]);
-		const label = pick(/model|system|^name$|display/i, ["nominal"], [color]) ||
+		/* who made it; else, in "long" files (one row per model and benchmark), what was measured */
+		const fewValues = (f) => f.type === "nominal" && f.distinct > 1 && f.distinct <= 80;
+		const color = pick(/organi[sz]ation|^org|^lab$|developer|company|country|publisher|provider|vendor/i, ["nominal"]) ||
+			((fields.find((f) => /^(benchmark|task|dataset|category|metric)$/i.test(f.name) && fewValues(f)) || {}).name) || "";
+		const label = pick(/^(model|model[ _]?name|name|system|display[ _]?name)$/i, ["nominal"], [color]) ||
+			pick(/^(?!.*(_id|id$|version)).*(model|system|display)/i, ["nominal"], [color]) ||
+			pick(/model|system|^name$|display/i, ["nominal"], [color]) ||
 			((nominal.find((f) => f.name !== color) || {}).name) || "";
 		return { x, y, color, label, low: low && high ? low : "", high: low && high ? high : "", size: "" };
 	}
@@ -160,7 +168,7 @@
 			if (!rows.length) throw new Error("The file has no rows.");
 			const names = [];
 			for (const r of rows.slice(0, 200)) for (const k in r) if (!names.includes(k)) names.push(k);
-			const fields = names.filter((n) => n.trim() !== "").map((n) => ({ name: n, type: inferType(n, rows) }));
+			const fields = names.filter((n) => n.trim() !== "").map((n) => ({ name: n, type: inferType(n, rows), distinct: new Set(rows.map((r) => r[n])).size }));
 			convert(rows, fields);
 			const alias = String(name).replace(/\.[^.]*$/, "").replace(/[^A-Za-z0-9_]+/g, "_").replace(/^(\d)/, "_$1") || "data";
 			RC.datasets[idx] = { name, alias, rows, fields };
