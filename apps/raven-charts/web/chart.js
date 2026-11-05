@@ -270,7 +270,9 @@
 		const enc = (f, extra) => Object.assign({ field: f, type: T(f), title: f }, extra || {});
 		const yScale = cfg.logY ? { type: "log" } : { zero: false };
 		const xScale = cfg.logX && T(x) === "quantitative" ? { type: "log" } : T(x) === "quantitative" ? { zero: false } : undefined;
-		const xEnc = () => enc(x, xScale ? { scale: xScale } : {});
+		/* dates on an axis always carry their year ("Apr 2025"): the default only shows it on January */
+		const dateAxis = { format: "%b %Y", labelOverlap: true };
+		const xEnc = () => enc(x, Object.assign(xScale ? { scale: xScale } : {}, T(x) === "temporal" ? { axis: dateAxis } : {}));
 		const yEnc = () => enc(y, { scale: yScale });
 		const colorEnc = () => color ? { field: color, type: T(color) === "quantitative" ? "quantitative" : "nominal", title: color, legend: cfg.only ? null : undefined } : undefined;
 		const tooltip = () => {
